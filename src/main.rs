@@ -1,6 +1,7 @@
 /*
  * Basic Interpriter
  */
+use std::collections::HashMap;
 use std::io;
 
 fn main() {
@@ -8,6 +9,7 @@ fn main() {
 }
 
 fn mainloop() {
+    let mut variable = HashMap::new();
     loop {
         let mut line = String::new();
         io::stdin()
@@ -17,13 +19,14 @@ fn mainloop() {
         //parse line
         let parsed = parse_line::line(&line);
         match parsed {
-            Ok(stmt) => {
-                match stmt {
-                    Stmt::Print(val) => {
-                        for v in val.items.iter() {
-                            println!("{}", v);
-                        }
+            Ok(stmt) => match stmt {
+                Stmt::Print(val) => {
+                    for v in val.items.iter() {
+                        println!("{}", v);
                     }
+                }
+                Stmt::Assign(val) => {
+                    variable.insert(val.name.to_string(), val.value);
                 }
             },
             Err(_) => {
@@ -36,11 +39,18 @@ fn mainloop() {
 #[derive(Debug, PartialEq)]
 pub enum Stmt {
     Print(StmtPrint),
+    Assign(StmtAssign),
 }
 
 #[derive(Debug, PartialEq)]
 pub struct StmtPrint {
     items: Vec<i64>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct StmtAssign {
+    name: String,
+    value: i64,
 }
 
 peg::parser! {
@@ -50,10 +60,21 @@ peg::parser! {
     rule number() -> i64
       = n:$(['0'..='9']+) {? n.parse::<i64>().or(Err("i64")) }
 
-    rule print() -> StmtPrint
-      = "print" _ n:number() { StmtPrint{ items: vec![n] }}
+    rule print() -> Stmt
+      = "print" _ n:number() {
+          Stmt::Print(
+              StmtPrint { items: vec![n] }
+          )
+      }
+
+    rule assign() -> Stmt
+      = n:$(['a'..='z']+) _ "=" _ v:number() {
+          Stmt::Assign(
+              StmtAssign { name: n.to_string(), value: v }
+          )
+      }
 
     pub rule line() -> Stmt
-      = n:print() "\n" { Stmt::Print(n) }
+      = n:(print() / assign()) "\n" { n }
   }
 }
