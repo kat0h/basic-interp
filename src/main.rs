@@ -84,8 +84,13 @@ peg::parser! {
     rule number() -> i64
       = n:$(['0'..='9']+) {? n.parse::<i64>().or(Err("i64")) }
 
+    rule name() -> String
+      = n:$(['a'..='z']+) { n.to_string() }
+
+    rule vnumber() -> Value = n:number() { Value::Num(n) }
+    rule vname() -> Value = n:name() { Value::Var(n) }
     rule value() -> Value
-      = n:number() { Value::Num(n) }
+      = n:(vnumber() / vname()) { n }
 
     rule print() -> Stmt
       = "print" _ n:value() {
@@ -95,9 +100,9 @@ peg::parser! {
       }
 
     rule assign() -> Stmt
-      = n:$(['a'..='z']+) _ "=" _ v:value() {
+      = n:name() _ "=" _ v:value() {
           Stmt::Assign(
-              StmtAssign { name: n.to_string(), value: v }
+              StmtAssign { name: n, value: v }
           )
       }
 
