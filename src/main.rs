@@ -1,6 +1,7 @@
 /*
  * Basic Interpriter
  */
+use core::option::Option;
 use std::collections::HashMap;
 use std::io;
 
@@ -22,15 +23,23 @@ fn mainloop() {
             Ok(stmt) => match stmt {
                 Stmt::Print(val) => {
                     for v in val.items.iter() {
-                        println!("{}", v);
+                        match v.get_num(&variable) {
+                            Some(n) => println!("{}", n),
+                            None => eprintln!("Undefined Variable"),
+                        }
                     }
                 }
-                Stmt::Assign(val) => {
-                    variable.insert(val.name.to_string(), val.value);
-                }
+                Stmt::Assign(val) => match val.value.get_num(&variable) {
+                    Some(v) => {
+                        variable.insert(val.name.to_string(), v);
+                    }
+                    None => {
+                        eprintln!("Undefined Variable");
+                    }
+                },
             },
             Err(_) => {
-                println!("Syntax Error!");
+                eprintln!("Syntax Error!");
             }
         }
     }
@@ -44,13 +53,28 @@ pub enum Stmt {
 
 #[derive(Debug, PartialEq)]
 pub struct StmtPrint {
-    items: Vec<i64>,
+    items: Vec<Value>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct StmtAssign {
     name: String,
-    value: i64,
+    value: Value,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Value {
+    Num(i64),
+    Var(String),
+}
+
+impl Value {
+    pub fn get_num(&self, variable: &HashMap<String, i64>) -> Option<i64> {
+        match self {
+            Value::Num(n) => Some(*n),
+            Value::Var(n) => variable.get(n).copied(),
+        }
+    }
 }
 
 peg::parser! {
@@ -60,15 +84,18 @@ peg::parser! {
     rule number() -> i64
       = n:$(['0'..='9']+) {? n.parse::<i64>().or(Err("i64")) }
 
+    rule value() -> Value
+      = n:number() { Value::Num(n) }
+
     rule print() -> Stmt
-      = "print" _ n:number() {
+      = "print" _ n:value() {
           Stmt::Print(
               StmtPrint { items: vec![n] }
           )
       }
 
     rule assign() -> Stmt
-      = n:$(['a'..='z']+) _ "=" _ v:number() {
+      = n:$(['a'..='z']+) _ "=" _ v:value() {
           Stmt::Assign(
               StmtAssign { name: n.to_string(), value: v }
           )
