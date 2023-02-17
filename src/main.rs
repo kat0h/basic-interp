@@ -77,6 +77,10 @@ pub enum Expr {
 pub enum Op {
     Add, // +
     Sub, // -
+    Mul, // *
+    Div, // /
+    LT,  // <
+    GT,  // >
 }
 
 impl Expr {
@@ -90,6 +94,10 @@ impl Expr {
                 Some(match op {
                     Op::Add => l + r,
                     Op::Sub => l - r,
+                    Op::Mul => l * r,
+                    Op::Div => l / r,
+                    Op::LT  => if l < r { 1 } else { 0 },
+                    Op::GT  => if l > r { 1 } else { 0 },
                 })
             }
         }
@@ -118,6 +126,36 @@ peg::parser! {
             l:(@) _ "-" _ r:@ {
                 Expr::BinOp {
                     op: Op::Sub,
+                    left: Box::new(l),
+                    right: Box::new(r),
+                }
+            }
+            --
+            l:(@) _ "*" _ r:@ {
+                Expr::BinOp {
+                    op: Op::Mul,
+                    left: Box::new(l),
+                    right: Box::new(r),
+                }
+            }
+            l:(@) _ "/" _ r:@ {
+                Expr::BinOp {
+                    op: Op::Div,
+                    left: Box::new(l),
+                    right: Box::new(r),
+                }
+            }
+            --
+            l:(@) _ "<" _ r:@ {
+                Expr::BinOp {
+                    op: Op::LT,
+                    left: Box::new(l),
+                    right: Box::new(r),
+                }
+            }
+            l:(@) _ ">" _ r:@ {
+                Expr::BinOp {
+                    op: Op::GT,
                     left: Box::new(l),
                     right: Box::new(r),
                 }
