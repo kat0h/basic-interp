@@ -108,14 +108,14 @@ peg::parser! {
 
     rule expr() -> Expr
         = precedence!{
-            l:(@) "+" r:@ {
+            l:(@) _ "+" _ r:@ {
                 Expr::BinOp {
                     op: Op::Add,
                     left: Box::new(l),
                     right: Box::new(r),
                 }
             }
-            l:(@) "-" r:@ {
+            l:(@) _ "-" _ r:@ {
                 Expr::BinOp {
                     op: Op::Sub,
                     left: Box::new(l),
@@ -125,6 +125,7 @@ peg::parser! {
             --
             n:number() { Expr::Num(n) }
             n:name() { Expr::Var(n) }
+            "(" _ e:expr() _ ")" { e }
         }
 
     rule print() -> Stmt
