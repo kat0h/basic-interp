@@ -23,13 +23,13 @@ fn mainloop() {
             Ok(stmt) => match stmt {
                 Stmt::Print(val) => {
                     for v in val.items.iter() {
-                        match v.get_num(&variable) {
+                        match v.eval(&variable) {
                             Some(n) => println!("{}", n),
                             None => eprintln!("Undefined Variable"),
                         }
                     }
                 }
-                Stmt::Assign(val) => match val.value.get_num(&variable) {
+                Stmt::Assign(val) => match val.value.eval(&variable) {
                     Some(v) => {
                         variable.insert(val.name.to_string(), v);
                     }
@@ -53,26 +53,45 @@ pub enum Stmt {
 
 #[derive(Debug, PartialEq)]
 pub struct StmtPrint {
-    items: Vec<Value>,
+    items: Vec<Expr>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct StmtAssign {
     name: String,
-    value: Value,
+    value: Expr,
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Value {
+pub enum Expr {
     Num(i64),
     Var(String),
+    BinOp {
+        op: Op,
+        left: Box<Expr>,
+        right: Box<Expr>,
+    },
 }
 
-impl Value {
-    pub fn get_num(&self, variable: &HashMap<String, i64>) -> Option<i64> {
+#[derive(Debug, PartialEq)]
+pub enum Op {
+    Add, // +
+    Sub, // -
+}
+
+impl Expr {
+    pub fn eval(&self, variable: &HashMap<String, i64>) -> Option<i64> {
         match self {
-            Value::Num(n) => Some(*n),
-            Value::Var(n) => variable.get(n).copied(),
+            Expr::Num(n) => Some(*n),
+            Expr::Var(n) => variable.get(n).copied(),
+            Expr::BinOp { op, left, right } => {
+                let l = left.eval(variable)?;
+                let r = right.eval(variable)?;
+                Some(match op {
+                    Op::Add => l + r,
+                    Op::Sub => l - r,
+                })
+            }
         }
     }
 }
@@ -82,31 +101,47 @@ peg::parser! {
     rule _() = [' ' | '\t']*
 
     rule number() -> i64
-      = n:$(['0'..='9']+) {? n.parse::<i64>().or(Err("i64")) }
+        = n:$(['0'..='9']+) {? n.parse::<i64>().or(Err("i64")) }
 
     rule name() -> String
-      = n:$(['a'..='z']+) { n.to_string() }
+        = n:$(['a'..='z']+) { n.to_string() }
 
-    rule vnumber() -> Value = n:number() { Value::Num(n) }
-    rule vname() -> Value = n:name() { Value::Var(n) }
-    rule value() -> Value
-      = n:(vnumber() / vname()) { n }
+    rule expr() -> Expr
+        = precedence!{
+            l:(@) "+" r:@ {
+                Expr::BinOp {
+                    op: Op::Add,
+                    left: Box::new(l),
+                    right: Box::new(r),
+                }
+            }
+            l:(@) "-" r:@ {
+                Expr::BinOp {
+                    op: Op::Sub,
+                    left: Box::new(l),
+                    right: Box::new(r),
+                }
+            }
+            --
+            n:number() { Expr::Num(n) }
+            n:name() { Expr::Var(n) }
+        }
 
     rule print() -> Stmt
-      = "print" _ n:value() {
-          Stmt::Print(
-              StmtPrint { items: vec![n] }
-          )
-      }
+        = "print" _ n:expr() {
+            Stmt::Print(
+                StmtPrint { items: vec![n] }
+            )
+        }
 
     rule assign() -> Stmt
-      = n:name() _ "=" _ v:value() {
-          Stmt::Assign(
-              StmtAssign { name: n, value: v }
-          )
-      }
+        = n:name() _ "=" _ v:expr() {
+            Stmt::Assign(
+                StmtAssign { name: n, value: v }
+            )
+        }
 
     pub rule line() -> Stmt
-      = n:(print() / assign()) "\n" { n }
+        = n:(print() / assign()) "\n" { n }
   }
 }
