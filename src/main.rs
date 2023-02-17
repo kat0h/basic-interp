@@ -10,7 +10,8 @@ fn main() {
 }
 
 fn mainloop() {
-    let mut variable = HashMap::new();
+    let mut variable: HashMap<String, i64> = HashMap::new();
+
     loop {
         let mut line = String::new();
         io::stdin()
@@ -20,27 +21,11 @@ fn mainloop() {
         //parse line
         let parsed = parse_line::line(&line);
         match parsed {
-            Ok(stmt) => match stmt {
-                Stmt::Print(val) => {
-                    for v in val.items.iter() {
-                        match v.eval(&variable) {
-                            Some(n) => println!("{}", n),
-                            None => eprintln!("Undefined Variable"),
-                        }
-                    }
-                }
-                Stmt::Assign(val) => match val.value.eval(&variable) {
-                    Some(v) => {
-                        variable.insert(val.name.to_string(), v);
-                    }
-                    None => {
-                        eprintln!("Undefined Variable");
-                    }
-                },
+            Ok(stmt) => stmt.exec(&mut variable),
+            Err(err) => {
+                println!("Syntax Error!");
+                dbg!(&err);
             },
-            Err(_) => {
-                eprintln!("Syntax Error!");
-            }
         }
     }
 }
@@ -49,6 +34,46 @@ fn mainloop() {
 pub enum Stmt {
     Print(StmtPrint),
     Assign(StmtAssign),
+    If(StmtIf),
+}
+
+impl Stmt {
+    pub fn exec(&self, variable: &mut HashMap<String, i64>) {
+        match self {
+            Stmt::If(i) => match i.cond.eval(variable) {
+                Some(v) => {
+                    if v != 0 {
+                        i.iftrue.exec(variable);
+                    }
+                }
+                None => {
+                    println!("Undefined Variable");
+                }
+            },
+            Stmt::Print(val) => {
+                for v in val.items.iter() {
+                    match v.eval(variable) {
+                        Some(n) => println!("{}", n),
+                        None => eprintln!("Undefined Variable"),
+                    }
+                }
+            }
+            Stmt::Assign(val) => match val.value.eval(variable) {
+                Some(v) => {
+                    variable.insert(val.name.to_string(), v);
+                }
+                None => {
+                    eprintln!("Undefined Variable");
+                }
+            },
+        };
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct StmtIf {
+    cond: Expr,
+    iftrue: Box<Stmt>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -96,8 +121,20 @@ impl Expr {
                     Op::Sub => l - r,
                     Op::Mul => l * r,
                     Op::Div => l / r,
-                    Op::LT  => if l < r { 1 } else { 0 },
-                    Op::GT  => if l > r { 1 } else { 0 },
+                    Op::LT => {
+                        if l < r {
+                            1
+                        } else {
+                            0
+                        }
+                    }
+                    Op::GT => {
+                        if l > r {
+                            1
+                        } else {
+                            0
+                        }
+                    }
                 })
             }
         }
@@ -116,50 +153,14 @@ peg::parser! {
 
     rule expr() -> Expr
         = precedence!{
-            l:(@) _ "+" _ r:@ {
-                Expr::BinOp {
-                    op: Op::Add,
-                    left: Box::new(l),
-                    right: Box::new(r),
-                }
-            }
-            l:(@) _ "-" _ r:@ {
-                Expr::BinOp {
-                    op: Op::Sub,
-                    left: Box::new(l),
-                    right: Box::new(r),
-                }
-            }
+            l:(@) _ "+" _ r:@ { Expr::BinOp { op: Op::Add, left: Box::new(l), right: Box::new(r), } }
+            l:(@) _ "-" _ r:@ { Expr::BinOp { op: Op::Sub, left: Box::new(l), right: Box::new(r), } }
             --
-            l:(@) _ "*" _ r:@ {
-                Expr::BinOp {
-                    op: Op::Mul,
-                    left: Box::new(l),
-                    right: Box::new(r),
-                }
-            }
-            l:(@) _ "/" _ r:@ {
-                Expr::BinOp {
-                    op: Op::Div,
-                    left: Box::new(l),
-                    right: Box::new(r),
-                }
-            }
+            l:(@) _ "*" _ r:@ { Expr::BinOp { op: Op::Mul, left: Box::new(l), right: Box::new(r), } }
+            l:(@) _ "/" _ r:@ { Expr::BinOp { op: Op::Div, left: Box::new(l), right: Box::new(r), } }
             --
-            l:(@) _ "<" _ r:@ {
-                Expr::BinOp {
-                    op: Op::LT,
-                    left: Box::new(l),
-                    right: Box::new(r),
-                }
-            }
-            l:(@) _ ">" _ r:@ {
-                Expr::BinOp {
-                    op: Op::GT,
-                    left: Box::new(l),
-                    right: Box::new(r),
-                }
-            }
+            l:(@) _ "<" _ r:@ { Expr::BinOp { op: Op::LT, left: Box::new(l), right: Box::new(r), } }
+            l:(@) _ ">" _ r:@ { Expr::BinOp { op: Op::GT, left: Box::new(l), right: Box::new(r), } }
             --
             n:number() { Expr::Num(n) }
             n:name() { Expr::Var(n) }
@@ -167,20 +168,18 @@ peg::parser! {
         }
 
     rule print() -> Stmt
-        = "print" _ n:expr() {
-            Stmt::Print(
-                StmtPrint { items: vec![n] }
-            )
-        }
+        = "print" _ n:expr() { Stmt::Print( StmtPrint { items: vec![n] }) }
 
     rule assign() -> Stmt
-        = n:name() _ "=" _ v:expr() {
-            Stmt::Assign(
-                StmtAssign { name: n, value: v }
-            )
-        }
+        = n:name() _ "=" _ v:expr() { Stmt::Assign( StmtAssign { name: n, value: v }) }
 
+    rule ifstmt() -> Stmt
+        = "if" _ e:expr() _ "then" _ l:stmt() { Stmt::If( StmtIf { cond: e, iftrue: Box::new(l) }) }
+
+    rule stmt() -> Stmt
+        = n:(print() / assign() / ifstmt()) { n }
+    
     pub rule line() -> Stmt
-        = n:(print() / assign()) "\n" { n }
+        = n:stmt() _ "\n" { n }
   }
 }
