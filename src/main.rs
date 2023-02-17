@@ -10,6 +10,7 @@ fn main() {
 }
 
 fn mainloop() {
+    let mut lines: HashMap<i64, Box<Stmt>> = HashMap::new();
     let mut variable: HashMap<String, i64> = HashMap::new();
 
     loop {
@@ -21,13 +22,26 @@ fn mainloop() {
         //parse line
         let parsed = parse_line::line(&line);
         match parsed {
-            Ok(stmt) => stmt.exec(&mut variable),
+            Ok(line) => match line.index {
+                Some(i) => {
+                    lines.insert(i, Box::new(line.stmt));
+                }
+                None => {
+                    line.stmt.exec(&mut variable, &mut lines);
+                }
+            },
             Err(err) => {
                 println!("Syntax Error!");
                 dbg!(&err);
-            },
+            }
         }
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Line {
+    index: Option<i64>,
+    stmt: Stmt,
 }
 
 #[derive(Debug, PartialEq)]
@@ -38,12 +52,12 @@ pub enum Stmt {
 }
 
 impl Stmt {
-    pub fn exec(&self, variable: &mut HashMap<String, i64>) {
+    pub fn exec(&self, variable: &mut HashMap<String, i64>, lines: &mut HashMap<i64, Box<Stmt>>) {
         match self {
             Stmt::If(i) => match i.cond.eval(variable) {
                 Some(v) => {
                     if v != 0 {
-                        i.iftrue.exec(variable);
+                        i.iftrue.exec(variable, lines);
                     }
                 }
                 None => {
@@ -178,8 +192,13 @@ peg::parser! {
 
     rule stmt() -> Stmt
         = n:(print() / assign() / ifstmt()) { n }
-    
-    pub rule line() -> Stmt
-        = n:stmt() _ "\n" { n }
+
+    pub rule line() -> Line
+        = i:(number()?) _ n:stmt() _ "\n" {
+            Line {
+                index: i,
+                stmt: n
+            }
+        }
   }
 }
