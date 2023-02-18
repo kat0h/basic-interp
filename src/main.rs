@@ -14,6 +14,12 @@ fn mainloop() {
     let mut variable: HashMap<String, i64> = HashMap::new();
     let mut command: HashMap<String, InternalCommand> = HashMap::new();
 
+    // 組み込みコマンドを初期化する
+    command.insert("print".to_string(), InternalCommand {
+        func: command_print,
+        argl: 1
+    });
+
     loop {
         let mut line = String::new();
         io::stdin()
@@ -39,8 +45,21 @@ fn mainloop() {
     }
 }
 
+fn command_print(
+    variable: &mut HashMap<String, i64>,
+    _: &mut HashMap<i64, Box<Stmt>>,
+    args: &[Expr],
+) {
+    for v in args.iter() {
+        match v.eval(variable) {
+            Some(n) => println!("{}", n),
+            None => eprintln!("Evaluation Error!"),
+        }
+    }
+}
+
 type Icommand =
-    fn(variable: &mut HashMap<String, i64>, lines: &mut HashMap<i64, Box<Stmt>>, args: &Vec<Expr>);
+    fn(variable: &mut HashMap<String, i64>, lines: &mut HashMap<i64, Box<Stmt>>, args: &[Expr]);
 pub struct InternalCommand {
     func: Icommand,
     argl: usize,
@@ -60,7 +79,12 @@ pub enum Stmt {
 }
 
 impl Stmt {
-    pub fn exec(&self, variable: &mut HashMap<String, i64>, lines: &mut HashMap<i64, Box<Stmt>>, command: &mut HashMap<String, InternalCommand>) {
+    pub fn exec(
+        &self,
+        variable: &mut HashMap<String, i64>,
+        lines: &mut HashMap<i64, Box<Stmt>>,
+        command: &mut HashMap<String, InternalCommand>,
+    ) {
         // エラー時の処理をきちんと作成する
         match self {
             Stmt::If(i) => match i.cond.eval(variable) {
