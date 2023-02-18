@@ -12,6 +12,7 @@ fn main() {
 fn mainloop() {
     let mut lines: HashMap<i64, Box<Stmt>> = HashMap::new();
     let mut variable: HashMap<String, i64> = HashMap::new();
+    let mut command: HashMap<String, InternalCommand> = HashMap::new();
 
     loop {
         let mut line = String::new();
@@ -27,7 +28,7 @@ fn mainloop() {
                     lines.insert(i, Box::new(line.stmt));
                 }
                 None => {
-                    line.stmt.exec(&mut variable, &mut lines);
+                    line.stmt.exec(&mut variable, &mut lines, &mut command);
                 }
             },
             Err(err) => {
@@ -38,6 +39,13 @@ fn mainloop() {
     }
 }
 
+type Icommand =
+    fn(variable: &mut HashMap<String, i64>, lines: &mut HashMap<i64, Box<Stmt>>, args: &Vec<Expr>);
+pub struct InternalCommand {
+    func: Icommand,
+    argl: usize,
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Line {
     index: Option<i64>,
@@ -46,30 +54,35 @@ pub struct Line {
 
 #[derive(Debug, PartialEq)]
 pub enum Stmt {
-    Print(StmtPrint),
+    Command(StmtCommand),
     Assign(StmtAssign),
     If(StmtIf),
 }
 
 impl Stmt {
-    pub fn exec(&self, variable: &mut HashMap<String, i64>, lines: &mut HashMap<i64, Box<Stmt>>) {
+    pub fn exec(&self, variable: &mut HashMap<String, i64>, lines: &mut HashMap<i64, Box<Stmt>>, command: &mut HashMap<String, InternalCommand>) {
+        // エラー時の処理をきちんと作成する
         match self {
             Stmt::If(i) => match i.cond.eval(variable) {
                 Some(v) => {
                     if v != 0 {
-                        i.iftrue.exec(variable, lines);
+                        i.iftrue.exec(variable, lines, command);
                     }
                 }
                 None => {
                     println!("Undefined Variable");
                 }
             },
-            Stmt::Print(val) => {
-                for v in val.items.iter() {
-                    match v.eval(variable) {
-                        Some(n) => println!("{}", n),
-                        None => eprintln!("Undefined Variable"),
+            Stmt::Command(val) => {
+                // コマンドの存在確認
+                if let Some(cmd) = command.get(&val.command_name) {
+                    if cmd.argl != val.items.len() {
+                        eprintln!("Too many/less argumants");
+                        return;
                     }
+                    (cmd.func)(variable, lines, &val.items);
+                } else {
+                    eprintln!("Undefined Command");
                 }
             }
             Stmt::Assign(val) => match val.value.eval(variable) {
@@ -91,7 +104,8 @@ pub struct StmtIf {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct StmtPrint {
+pub struct StmtCommand {
+    command_name: String,
     items: Vec<Expr>,
 }
 
@@ -181,8 +195,8 @@ peg::parser! {
             "(" _ e:expr() _ ")" { e }
         }
 
-    rule print() -> Stmt
-        = "print" _ n:expr() { Stmt::Print( StmtPrint { items: vec![n] }) }
+    rule command() -> Stmt
+        = s:$(['a'..='z']+) _ n:expr() { Stmt::Command( StmtCommand { command_name: s.to_string(), items: vec![n] }) }
 
     rule assign() -> Stmt
         = n:name() _ "=" _ v:expr() { Stmt::Assign( StmtAssign { name: n, value: v }) }
@@ -191,7 +205,7 @@ peg::parser! {
         = "if" _ e:expr() _ "then" _ l:stmt() { Stmt::If( StmtIf { cond: e, iftrue: Box::new(l) }) }
 
     rule stmt() -> Stmt
-        = n:(print() / assign() / ifstmt()) { n }
+        = n:(command() / assign() / ifstmt()) { n }
 
     pub rule line() -> Line
         = i:(number()?) _ n:stmt() _ "\n" {
