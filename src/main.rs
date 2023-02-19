@@ -10,7 +10,7 @@ fn main() {
 }
 
 fn mainloop() {
-    let mut lines: HashMap<i64, Box<Stmt>> = HashMap::new();
+    let mut lines: HashMap<i64, String> = HashMap::new();
     let mut variable: HashMap<String, i64> = HashMap::new();
     let mut command: HashMap<String, InternalCommand> = HashMap::new();
 
@@ -32,14 +32,9 @@ fn mainloop() {
         //parse line
         let parsed = parse_line::input(&line);
         match parsed {
-            Ok(line) => match line.index {
-                Some(i) => {
-                    lines.insert(i, Box::new(line.stmt));
-                }
-                None => {
-                    line.stmt.exec(&mut variable, &mut lines, &mut command);
-                }
-            },
+            Ok(stmt) => {
+                stmt.exec(&mut variable, &mut lines, &mut command);
+            }
             Err(err) => {
                 println!("Syntax Error!");
                 dbg!(&err);
@@ -48,11 +43,7 @@ fn mainloop() {
     }
 }
 
-fn command_print(
-    variable: &mut HashMap<String, i64>,
-    _: &mut HashMap<i64, Box<Stmt>>,
-    args: &[Expr],
-) {
+fn command_print(variable: &mut HashMap<String, i64>, _: &mut HashMap<i64, String>, args: &[Expr]) {
     for v in args.iter() {
         match v.eval(variable) {
             Some(n) => println!("{}", n),
@@ -62,7 +53,7 @@ fn command_print(
 }
 
 type Icommand =
-    fn(variable: &mut HashMap<String, i64>, lines: &mut HashMap<i64, Box<Stmt>>, args: &[Expr]);
+    fn(variable: &mut HashMap<String, i64>, lines: &mut HashMap<i64, String>, args: &[Expr]);
 pub struct InternalCommand {
     func: Icommand,
     argl: usize,
@@ -76,17 +67,25 @@ pub struct Line {
 
 #[derive(Debug, PartialEq)]
 pub enum Stmt {
-    Command {
-        command_name: String,
-        items: Vec<Expr>,
+    // 行の登録
+    Line {
+        index: i64,
+        line: String,
     },
+    // 代入文を表す
     Assign {
         name: String,
         value: Expr,
     },
+    // if文を表す
     If {
         cond: Expr,
         iftrue: Box<Stmt>,
+    },
+    // print等のコマンドを表す
+    Command {
+        command_name: String,
+        items: Vec<Expr>,
     },
 }
 
@@ -94,11 +93,15 @@ impl Stmt {
     pub fn exec(
         &self,
         variable: &mut HashMap<String, i64>,
-        lines: &mut HashMap<i64, Box<Stmt>>,
+        lines: &mut HashMap<i64, String>,
         command: &mut HashMap<String, InternalCommand>,
     ) {
         // エラー時の処理をきちんと作成する
         match self {
+            Stmt::Line { index, line } => {
+                lines.insert(*index, line.to_string());
+                dbg!(lines);
+            }
             Stmt::If { cond, iftrue } => match cond.eval(variable) {
                 Some(v) => {
                     if v != 0 {
@@ -216,6 +219,14 @@ peg::parser! {
             "(" _ e:expr() _ ")" { e }
         }
 
+    rule line() -> Stmt
+        = n:number() s:$([^'\n']*) {
+            Stmt::Line {
+                index: n,
+                line: s.to_string(),
+            }
+        }
+
     rule command() -> Stmt
         = s:$(['a'..='z']+) _ n:expr() { Stmt::Command { command_name: s.to_string(), items: vec![n] } }
 
@@ -226,14 +237,9 @@ peg::parser! {
         = "if" _ e:expr() _ "then" _ l:stmt() { Stmt::If { cond: e, iftrue: Box::new(l) } }
 
     rule stmt() -> Stmt
-        = n:(ifstmt() / assign() / command()) { n }
+        = n:(line() / ifstmt() / assign() / command()) { n }
 
-    pub rule input() -> Line
-        = i:(number()?) _ n:stmt() _ "\n" {
-            Line {
-                index: i,
-                stmt: n
-            }
-        }
+    pub rule input() -> Stmt
+        = _ s:stmt() _ "\n" { s }
   }
 }
