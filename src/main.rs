@@ -226,7 +226,7 @@ peg::parser! {
         = "if" _ e:expr() _ "then" _ l:stmt() { Stmt::If { cond: e, iftrue: Box::new(l) } }
 
     rule stmt() -> Stmt
-        = n:(command() / assign() / ifstmt()) { n }
+        = n:(ifstmt() / assign() / command()) { n }
 
     pub rule input() -> Line
         = i:(number()?) _ n:stmt() _ "\n" {
