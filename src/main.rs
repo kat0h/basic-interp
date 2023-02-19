@@ -15,10 +15,13 @@ fn mainloop() {
     let mut command: HashMap<String, InternalCommand> = HashMap::new();
 
     // 組み込みコマンドを初期化する
-    command.insert("print".to_string(), InternalCommand {
-        func: command_print,
-        argl: 1
-    });
+    command.insert(
+        "print".to_string(),
+        InternalCommand {
+            func: command_print,
+            argl: 1,
+        },
+    );
 
     loop {
         let mut line = String::new();
@@ -27,7 +30,7 @@ fn mainloop() {
             .expect("Failed to read line");
 
         //parse line
-        let parsed = parse_line::line(&line);
+        let parsed = parse_line::input(&line);
         match parsed {
             Ok(line) => match line.index {
                 Some(i) => {
@@ -73,9 +76,18 @@ pub struct Line {
 
 #[derive(Debug, PartialEq)]
 pub enum Stmt {
-    Command(StmtCommand),
-    Assign(StmtAssign),
-    If(StmtIf),
+    Command {
+        command_name: String,
+        items: Vec<Expr>,
+    },
+    Assign {
+        name: String,
+        value: Expr,
+    },
+    If {
+        cond: Expr,
+        iftrue: Box<Stmt>,
+    },
 }
 
 impl Stmt {
@@ -87,31 +99,34 @@ impl Stmt {
     ) {
         // エラー時の処理をきちんと作成する
         match self {
-            Stmt::If(i) => match i.cond.eval(variable) {
+            Stmt::If { cond, iftrue } => match cond.eval(variable) {
                 Some(v) => {
                     if v != 0 {
-                        i.iftrue.exec(variable, lines, command);
+                        iftrue.exec(variable, lines, command);
                     }
                 }
                 None => {
                     println!("Undefined Variable");
                 }
             },
-            Stmt::Command(val) => {
+            Stmt::Command {
+                command_name,
+                items,
+            } => {
                 // コマンドの存在確認
-                if let Some(cmd) = command.get(&val.command_name) {
-                    if cmd.argl != val.items.len() {
+                if let Some(cmd) = command.get(command_name) {
+                    if cmd.argl != items.len() {
                         eprintln!("Too many/less argumants");
                         return;
                     }
-                    (cmd.func)(variable, lines, &val.items);
+                    (cmd.func)(variable, lines, items);
                 } else {
                     eprintln!("Undefined Command");
                 }
             }
-            Stmt::Assign(val) => match val.value.eval(variable) {
+            Stmt::Assign { name, value } => match value.eval(variable) {
                 Some(v) => {
-                    variable.insert(val.name.to_string(), v);
+                    variable.insert(name.to_string(), v);
                 }
                 None => {
                     eprintln!("Undefined Variable");
@@ -119,24 +134,6 @@ impl Stmt {
             },
         };
     }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct StmtIf {
-    cond: Expr,
-    iftrue: Box<Stmt>,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct StmtCommand {
-    command_name: String,
-    items: Vec<Expr>,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct StmtAssign {
-    name: String,
-    value: Expr,
 }
 
 #[derive(Debug, PartialEq)]
@@ -220,18 +217,18 @@ peg::parser! {
         }
 
     rule command() -> Stmt
-        = s:$(['a'..='z']+) _ n:expr() { Stmt::Command( StmtCommand { command_name: s.to_string(), items: vec![n] }) }
+        = s:$(['a'..='z']+) _ n:expr() { Stmt::Command { command_name: s.to_string(), items: vec![n] } }
 
     rule assign() -> Stmt
-        = n:name() _ "=" _ v:expr() { Stmt::Assign( StmtAssign { name: n, value: v }) }
+        = n:name() _ "=" _ v:expr() { Stmt::Assign { name: n, value: v } }
 
     rule ifstmt() -> Stmt
-        = "if" _ e:expr() _ "then" _ l:stmt() { Stmt::If( StmtIf { cond: e, iftrue: Box::new(l) }) }
+        = "if" _ e:expr() _ "then" _ l:stmt() { Stmt::If { cond: e, iftrue: Box::new(l) } }
 
     rule stmt() -> Stmt
         = n:(command() / assign() / ifstmt()) { n }
 
-    pub rule line() -> Line
+    pub rule input() -> Line
         = i:(number()?) _ n:stmt() _ "\n" {
             Line {
                 index: i,
