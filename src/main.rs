@@ -10,22 +10,31 @@ fn main() {
 }
 
 fn mainloop() {
-    let mut lines: HashMap<i64, String> = HashMap::new();
-    let mut variable: HashMap<String, i64> = HashMap::new();
-    let mut command: HashMap<String, InternalCommand> = HashMap::new();
+    let mut env = Env {
+        variable: HashMap::new(),
+        line: HashMap::new(),
+        command: HashMap::new(),
+    };
 
     // 組み込みコマンドを初期化する
-    command.insert(
+    env.command.insert(
         "print".to_string(),
         InternalCommand {
             func: command_print,
             argl: -1,
         },
     );
-    command.insert(
+    env.command.insert(
         "list".to_string(),
         InternalCommand {
             func: command_list,
+            argl: 0,
+        },
+    );
+    env.command.insert(
+        "run".to_string(),
+        InternalCommand {
+            func: command_run,
             argl: 0,
         },
     );
@@ -40,8 +49,11 @@ fn mainloop() {
         let parsed = parse_line::input(&line);
         match parsed {
             Ok(stmt) => {
-                stmt.exec(&mut variable, &mut lines, &mut command);
+                if let Some(stmt) = stmt {
+                    stmt.exec(&mut env);
+                }
             }
+            // パーサーがエラーを吐いた場合
             Err(err) => {
                 println!("Syntax Error!");
                 dbg!(&err);
@@ -50,12 +62,8 @@ fn mainloop() {
     }
 }
 
-fn command_print(variable: &mut HashMap<String, i64>, _: &mut HashMap<i64, String>, args: &[Expr]) {
-    match args
-        .iter()
-        .map(|v| v.eval(variable))
-        .collect::<Option<Vec<_>>>()
-    {
+fn command_print(env: &mut Env, args: &[Expr]) {
+    match args.iter().map(|v| v.eval(env)).collect::<Option<Vec<_>>>() {
         Some(n) => {
             println!(
                 "{}",
@@ -71,16 +79,43 @@ fn command_print(variable: &mut HashMap<String, i64>, _: &mut HashMap<i64, Strin
     }
 }
 
-fn command_list(_: &mut HashMap<String, i64>, lines: &mut HashMap<i64, String>, _: &[Expr]) {
-    let mut l: Vec<(&i64, &String)> = lines.iter().collect();
-    l.sort_by(|a, b| b.0.cmp(a.0));
+fn command_list(env: &mut Env, _: &[Expr]) {
+    let mut l: Vec<(&i64, &String)> = env.line.iter().collect();
+    l.sort_by(|a, b| a.0.cmp(b.0));
     for i in l.iter() {
         println!("{}{}", i.0, i.1);
     }
 }
 
-type Icommand =
-    fn(variable: &mut HashMap<String, i64>, lines: &mut HashMap<i64, String>, args: &[Expr]);
+fn command_run(env: &mut Env, _: &[Expr]) {
+    // TODO: 実行中に新しい行が追加された時の対応
+    let mut indexlist = env.line.iter().map(|i| *(i.0)).collect::<Vec<i64>>();
+    indexlist.sort();
+    for index in indexlist {
+        let parsed = parse_line::input(&(env.line.get(&index).unwrap().to_string() + "\n"));
+        match parsed {
+            Ok(stmt) => {
+                if let Some(stmt) = stmt {
+                    stmt.exec(env);
+                }
+            }
+            // パーサーがエラーを吐いた場合
+            Err(err) => {
+                println!("Syntax Error!");
+                dbg!(&err);
+            }
+        }
+    }
+}
+
+// 環境
+pub struct Env {
+    variable: HashMap<String, i64>,
+    line: HashMap<i64, String>,
+    command: HashMap<String, InternalCommand>,
+}
+
+type Icommand = fn(env: &mut Env, args: &[Expr]);
 pub struct InternalCommand {
     func: Icommand,
     argl: i64,
@@ -117,23 +152,18 @@ pub enum Stmt {
 }
 
 impl Stmt {
-    pub fn exec(
-        &self,
-        variable: &mut HashMap<String, i64>,
-        lines: &mut HashMap<i64, String>,
-        command: &mut HashMap<String, InternalCommand>,
-    ) {
+    pub fn exec(&self, env: &mut Env) {
         // エラー時の処理をきちんと作成する
         match self {
             // 行番号
             Stmt::Line { index, line } => {
-                lines.insert(*index, line.to_string());
+                env.line.insert(*index, line.to_string());
             }
             // if文
-            Stmt::If { cond, iftrue } => match cond.eval(variable) {
+            Stmt::If { cond, iftrue } => match cond.eval(env) {
                 Some(v) => {
                     if v != 0 {
-                        iftrue.exec(variable, lines, command);
+                        iftrue.exec(env);
                     }
                 }
                 None => {
@@ -146,21 +176,21 @@ impl Stmt {
                 items,
             } => {
                 // コマンドの存在確認
-                if let Some(cmd) = command.get(command_name) {
+                if let Some(cmd) = env.command.get(command_name) {
                     // 引数の数をチェック
                     if cmd.argl != -1 && cmd.argl as usize != items.len() {
                         eprintln!("Too many/less argumants");
                         return;
                     }
-                    (cmd.func)(variable, lines, items);
+                    (cmd.func)(env, items);
                 } else {
                     eprintln!("Undefined Command");
                 }
             }
             // 変数の割り当て
-            Stmt::Assign { name, value } => match value.eval(variable) {
+            Stmt::Assign { name, value } => match value.eval(env) {
                 Some(v) => {
-                    variable.insert(name.to_string(), v);
+                    env.variable.insert(name.to_string(), v);
                 }
                 None => {
                     eprintln!("Undefined Variable");
@@ -192,13 +222,13 @@ pub enum Op {
 }
 
 impl Expr {
-    pub fn eval(&self, variable: &HashMap<String, i64>) -> Option<i64> {
+    pub fn eval(&self, env: &mut Env) -> Option<i64> {
         match self {
             Expr::Num(n) => Some(*n),
-            Expr::Var(n) => variable.get(n).copied(),
+            Expr::Var(n) => env.variable.get(n).copied(),
             Expr::BinOp { op, left, right } => {
-                let l = left.eval(variable)?;
-                let r = right.eval(variable)?;
+                let l = left.eval(env)?;
+                let r = right.eval(env)?;
                 Some(match op {
                     Op::Add => l + r,
                     Op::Sub => l - r,
@@ -270,7 +300,7 @@ peg::parser! {
     rule stmt() -> Stmt
         = n:(line() / ifstmt() / assign() / command()) { n }
 
-    pub rule input() -> Stmt
-        = _ s:stmt() _ "\n" { s }
+    pub rule input() -> Option<Stmt>
+        = _ s:stmt()? _ "\n" { s }
   }
 }
