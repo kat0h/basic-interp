@@ -22,6 +22,13 @@ fn mainloop() {
             argl: 1,
         },
     );
+    command.insert(
+        "list".to_string(),
+        InternalCommand {
+            func: command_list,
+            argl: 0,
+        },
+    );
 
     loop {
         let mut line = String::new();
@@ -49,6 +56,14 @@ fn command_print(variable: &mut HashMap<String, i64>, _: &mut HashMap<i64, Strin
             Some(n) => println!("{}", n),
             None => eprintln!("Evaluation Error!"),
         }
+    }
+}
+
+fn command_list(_: &mut HashMap<String, i64>, lines: &mut HashMap<i64, String>, _: &[Expr]) {
+    let mut l: Vec<(&i64, &String)> = lines.iter().collect();
+    l.sort_by(|a, b| b.0.cmp(a.0));
+    for i in l.iter() {
+        println!("{}{}", i.0, i.1);
     }
 }
 
@@ -98,10 +113,11 @@ impl Stmt {
     ) {
         // エラー時の処理をきちんと作成する
         match self {
+            // 行番号
             Stmt::Line { index, line } => {
                 lines.insert(*index, line.to_string());
-                dbg!(lines);
             }
+            // if文
             Stmt::If { cond, iftrue } => match cond.eval(variable) {
                 Some(v) => {
                     if v != 0 {
@@ -112,6 +128,7 @@ impl Stmt {
                     println!("Undefined Variable");
                 }
             },
+            // コマンド呼び出し
             Stmt::Command {
                 command_name,
                 items,
@@ -127,6 +144,7 @@ impl Stmt {
                     eprintln!("Undefined Command");
                 }
             }
+            // 変数の割り当て
             Stmt::Assign { name, value } => match value.eval(variable) {
                 Some(v) => {
                     variable.insert(name.to_string(), v);
@@ -228,7 +246,7 @@ peg::parser! {
         }
 
     rule command() -> Stmt
-        = s:$(['a'..='z']+) _ n:expr() { Stmt::Command { command_name: s.to_string(), items: vec![n] } }
+        = s:$(['a'..='z']+) _ n:(expr() ** (" " _)) { Stmt::Command { command_name: s.to_string(), items: n } }
 
     rule assign() -> Stmt
         = n:name() _ "=" _ v:expr() { Stmt::Assign { name: n, value: v } }
