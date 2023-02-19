@@ -4,6 +4,7 @@
 use core::option::Option;
 use std::collections::HashMap;
 use std::io;
+use std::io::{stdout, Write};
 
 fn main() {
     mainloop();
@@ -38,6 +39,13 @@ fn mainloop() {
             argl: 0,
         },
     );
+    env.command.insert(
+        "cls".to_string(),
+        InternalCommand {
+            func: command_cls,
+            argl: 0,
+        },
+    );
 
     loop {
         let mut line = String::new();
@@ -51,6 +59,7 @@ fn mainloop() {
             Ok(stmt) => {
                 if let Some(stmt) = stmt {
                     stmt.exec(&mut env);
+                    println!("OK");
                 }
             }
             // パーサーがエラーを吐いた場合
@@ -107,6 +116,12 @@ fn command_run(env: &mut Env, _: &[Expr]) {
         }
     }
 }
+
+fn command_cls(_: &mut Env, _: &[Expr]) {
+    print!("\x1b[2J\x1b[H");
+    stdout().flush().unwrap();
+}
+
 
 // 環境
 pub struct Env {
