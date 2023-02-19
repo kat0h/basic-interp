@@ -19,7 +19,7 @@ fn mainloop() {
         "print".to_string(),
         InternalCommand {
             func: command_print,
-            argl: 1,
+            argl: -1,
         },
     );
     command.insert(
@@ -51,10 +51,22 @@ fn mainloop() {
 }
 
 fn command_print(variable: &mut HashMap<String, i64>, _: &mut HashMap<i64, String>, args: &[Expr]) {
-    for v in args.iter() {
-        match v.eval(variable) {
-            Some(n) => println!("{}", n),
-            None => eprintln!("Evaluation Error!"),
+    match args
+        .iter()
+        .map(|v| v.eval(variable))
+        .collect::<Option<Vec<_>>>()
+    {
+        Some(n) => {
+            println!(
+                "{}",
+                n.iter()
+                    .map(|i| i.to_string())
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            );
+        }
+        None => {
+            eprintln!("Evaluation Error!");
         }
     }
 }
@@ -71,7 +83,7 @@ type Icommand =
     fn(variable: &mut HashMap<String, i64>, lines: &mut HashMap<i64, String>, args: &[Expr]);
 pub struct InternalCommand {
     func: Icommand,
-    argl: usize,
+    argl: i64,
 }
 
 #[derive(Debug, PartialEq)]
@@ -135,7 +147,8 @@ impl Stmt {
             } => {
                 // コマンドの存在確認
                 if let Some(cmd) = command.get(command_name) {
-                    if cmd.argl != items.len() {
+                    // 引数の数をチェック
+                    if cmd.argl != -1 && cmd.argl as usize != items.len() {
                         eprintln!("Too many/less argumants");
                         return;
                     }
