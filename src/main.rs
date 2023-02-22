@@ -56,10 +56,20 @@ fn mainloop() {
         //parse line
         let parsed = parse_line::input(&line);
         match parsed {
+            // 正常にパースできた場合
             Ok(stmt) => {
                 if let Some(stmt) = stmt {
-                    stmt.exec(&mut env);
-                    println!("OK");
+                    let err = stmt.exec(&mut env);
+                    // エラーを振り分けg
+                    match err {
+                        ReturnCode::Ok_ => {
+                            println!("OK");
+                        }
+                        ReturnCode::SilentOk_ => (),
+                        ReturnCode::Error_ => {
+                            println!("Error")
+                        }
+                    }
                 }
             }
             // パーサーがエラーを吐いた場合
@@ -122,6 +132,11 @@ fn command_cls(_: &mut Env, _: &[Expr]) {
     stdout().flush().unwrap();
 }
 
+pub enum ReturnCode {
+    Ok_,
+    SilentOk_,
+    Error_,
+}
 
 // 環境
 pub struct Env {
@@ -167,12 +182,13 @@ pub enum Stmt {
 }
 
 impl Stmt {
-    pub fn exec(&self, env: &mut Env) {
+    pub fn exec(&self, env: &mut Env) -> ReturnCode {
         // エラー時の処理をきちんと作成する
         match self {
             // 行番号
             Stmt::Line { index, line } => {
                 env.line.insert(*index, line.to_string());
+                ReturnCode::SilentOk_
             }
             // if文
             Stmt::If { cond, iftrue } => match cond.eval(env) {
@@ -180,9 +196,11 @@ impl Stmt {
                     if v != 0 {
                         iftrue.exec(env);
                     }
+                    ReturnCode::Ok_
                 }
                 None => {
-                    println!("Undefined Variable");
+                    // println!("Undefined Variable");
+                    ReturnCode::Error_
                 }
             },
             // コマンド呼び出し
@@ -194,24 +212,29 @@ impl Stmt {
                 if let Some(cmd) = env.command.get(command_name) {
                     // 引数の数をチェック
                     if cmd.argl != -1 && cmd.argl as usize != items.len() {
-                        eprintln!("Too many/less argumants");
-                        return;
+                        // eprintln!("Too many/less argumants");
+                        return ReturnCode::Error_;
                     }
+                    // TODO: 内蔵コマンドのエラーを処理する
                     (cmd.func)(env, items);
+                    ReturnCode::Ok_
                 } else {
-                    eprintln!("Undefined Command");
+                    // eprintln!("Undefined Command");
+                    ReturnCode::Error_
                 }
             }
             // 変数の割り当て
             Stmt::Assign { name, value } => match value.eval(env) {
                 Some(v) => {
                     env.variable.insert(name.to_string(), v);
+                    ReturnCode::Ok_
                 }
                 None => {
-                    eprintln!("Undefined Variable");
+                    // eprintln!("Undefined Variable");
+                    ReturnCode::Error_
                 }
             },
-        };
+        }
     }
 }
 
