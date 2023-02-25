@@ -49,9 +49,12 @@ fn mainloop() {
 
     loop {
         let mut line = String::new();
-        io::stdin()
+        let bytes = io::stdin()
             .read_line(&mut line)
             .expect("Failed to read line");
+        if bytes == 0 {
+            break;
+        }
 
         //parse line
         let parsed = parse_line::input(&line);
