@@ -1,6 +1,25 @@
 /*
  * Basic Interpriter
  */
+
+/*
+ * 仕様
+ *   文法
+ *    - if [expr] then [stmt]
+ *    - [name] = [expr]
+ *   組み込みコマンド
+ *    - print
+ *    - cls
+ *    - list
+ *    - run
+ *   TODO
+ *    - cls
+ *    - new
+ *    - goto
+ *    - 文字列型
+ * 
+ */
+
 use core::option::Option;
 use std::collections::HashMap;
 use std::io;
