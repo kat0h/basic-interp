@@ -21,28 +21,28 @@ fn mainloop() {
     env.command.insert(
         "print".to_string(),
         InternalCommand {
-            func: command_print,
+            func: icommand_print,
             argl: -1,
         },
     );
     env.command.insert(
         "list".to_string(),
         InternalCommand {
-            func: command_list,
+            func: icommand_list,
             argl: 0,
         },
     );
     env.command.insert(
         "run".to_string(),
         InternalCommand {
-            func: command_run,
+            func: icommand_run,
             argl: 0,
         },
     );
     env.command.insert(
         "cls".to_string(),
         InternalCommand {
-            func: command_cls,
+            func: icommand_cls,
             argl: 0,
         },
     );
@@ -60,7 +60,7 @@ fn mainloop() {
             Ok(stmt) => {
                 if let Some(stmt) = stmt {
                     let err = stmt.exec(&mut env);
-                    // エラーを振り分けg
+                    // エラーを振り分け
                     match err {
                         ReturnCode::Ok_ => {
                             println!("OK");
@@ -81,7 +81,7 @@ fn mainloop() {
     }
 }
 
-fn command_print(env: &mut Env, args: &[Expr]) {
+fn icommand_print(env: &mut Env, args: &[Expr]) -> ReturnCode {
     match args.iter().map(|v| v.eval(env)).collect::<Option<Vec<_>>>() {
         Some(n) => {
             println!(
@@ -91,45 +91,64 @@ fn command_print(env: &mut Env, args: &[Expr]) {
                     .collect::<Vec<String>>()
                     .join(" ")
             );
+            ReturnCode::Ok_
         }
         None => {
             eprintln!("Evaluation Error!");
+            ReturnCode::Error_
         }
     }
 }
 
-fn command_list(env: &mut Env, _: &[Expr]) {
+fn icommand_list(env: &mut Env, _: &[Expr]) -> ReturnCode { 
     let mut l: Vec<(&i64, &String)> = env.line.iter().collect();
     l.sort_by(|a, b| a.0.cmp(b.0));
     for i in l.iter() {
         println!("{}{}", i.0, i.1);
     }
+    ReturnCode::Ok_
 }
 
-fn command_run(env: &mut Env, _: &[Expr]) {
+fn icommand_run(env: &mut Env, _: &[Expr]) -> ReturnCode {
     // TODO: 実行中に新しい行が追加された時の対応
+    // 実行前に全ての行を取得して、順に実行する
     let mut indexlist = env.line.iter().map(|i| *(i.0)).collect::<Vec<i64>>();
+    let mut rc: ReturnCode = ReturnCode::Ok_;
     indexlist.sort();
     for index in indexlist {
         let parsed = parse_line::input(&(env.line.get(&index).unwrap().to_string() + "\n"));
-        match parsed {
+        rc = match parsed {
             Ok(stmt) => {
                 if let Some(stmt) = stmt {
-                    stmt.exec(env);
+                    stmt.exec(env)
+                } else {
+                    // 空行など
+                    ReturnCode::SilentOk_
                 }
             }
             // パーサーがエラーを吐いた場合
             Err(err) => {
+                // TODO
                 println!("Syntax Error!");
                 dbg!(&err);
+                ReturnCode::Error_
             }
+        };
+        if let ReturnCode::Error_ = rc {
+            break;
         }
+    }
+    if let ReturnCode::Error_ = rc {
+        ReturnCode::Error_
+    } else {
+        ReturnCode::Ok_
     }
 }
 
-fn command_cls(_: &mut Env, _: &[Expr]) {
+fn icommand_cls(_: &mut Env, _: &[Expr]) -> ReturnCode {
     print!("\x1b[2J\x1b[H");
     stdout().flush().unwrap();
+    ReturnCode::Ok_
 }
 
 pub enum ReturnCode {
@@ -145,7 +164,7 @@ pub struct Env {
     command: HashMap<String, InternalCommand>,
 }
 
-type Icommand = fn(env: &mut Env, args: &[Expr]);
+type Icommand = fn(env: &mut Env, args: &[Expr]) -> ReturnCode;
 pub struct InternalCommand {
     func: Icommand,
     argl: i64,
@@ -216,8 +235,7 @@ impl Stmt {
                         return ReturnCode::Error_;
                     }
                     // TODO: 内蔵コマンドのエラーを処理する
-                    (cmd.func)(env, items);
-                    ReturnCode::Ok_
+                    (cmd.func)(env, items)
                 } else {
                     // eprintln!("Undefined Command");
                     ReturnCode::Error_
