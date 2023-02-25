@@ -78,6 +78,7 @@ fn mainloop() {
             // パーサーがエラーを吐いた場合
             Err(err) => {
                 println!("Syntax Error!");
+                dbg!(&line);
                 dbg!(&err);
             }
         }
