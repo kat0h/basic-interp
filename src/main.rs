@@ -12,8 +12,8 @@
  *    - cls
  *    - list
  *    - run
+ *    - clear
  *   TODO
- *    - cls
  *    - new
  *    - goto
  *    - 文字列型
@@ -64,6 +64,13 @@ fn mainloop() {
             func: icommand_cls,
             argl: 0,
         },
+    );
+    env.command.insert(
+        "clear".to_string(),
+        InternalCommand {
+            func: icommand_clear,
+            argl: 0,
+        }
     );
 
     loop {
@@ -171,6 +178,11 @@ fn icommand_run(env: &mut Env, _: &[Expr]) -> ReturnCode {
 fn icommand_cls(_: &mut Env, _: &[Expr]) -> ReturnCode {
     print!("\x1b[2J\x1b[H");
     stdout().flush().unwrap();
+    ReturnCode::Ok_
+}
+
+fn icommand_clear(env: &mut Env, _: &[Expr]) -> ReturnCode {
+    env.variable = HashMap::new();
     ReturnCode::Ok_
 }
 
