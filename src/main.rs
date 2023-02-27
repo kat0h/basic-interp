@@ -111,6 +111,7 @@ fn mainloop() {
     }
 }
 
+// 画面に文字列を表示する
 fn icommand_print(env: &mut Env, args: &[Expr]) -> ReturnCode {
     match args.iter().map(|v| v.eval(env)).collect::<Option<Vec<_>>>() {
         Some(n) => {
@@ -130,6 +131,7 @@ fn icommand_print(env: &mut Env, args: &[Expr]) -> ReturnCode {
     }
 }
 
+// 保存されている全ての行を削除
 fn icommand_list(env: &mut Env, _: &[Expr]) -> ReturnCode { 
     let mut l: Vec<(&i64, &String)> = env.line.iter().collect();
     l.sort_by(|a, b| a.0.cmp(b.0));
@@ -139,6 +141,7 @@ fn icommand_list(env: &mut Env, _: &[Expr]) -> ReturnCode {
     ReturnCode::Ok_
 }
 
+// プログラムを実行
 fn icommand_run(env: &mut Env, _: &[Expr]) -> ReturnCode {
     // TODO: 実行中に新しい行が追加された時の対応
     // 実行前に全ての行を取得して、順に実行する
@@ -175,12 +178,14 @@ fn icommand_run(env: &mut Env, _: &[Expr]) -> ReturnCode {
     }
 }
 
+// 画面をクリア
 fn icommand_cls(_: &mut Env, _: &[Expr]) -> ReturnCode {
     print!("\x1b[2J\x1b[H");
     stdout().flush().unwrap();
     ReturnCode::Ok_
 }
 
+// 全ての変数を削除
 fn icommand_clear(env: &mut Env, _: &[Expr]) -> ReturnCode {
     env.variable = HashMap::new();
     ReturnCode::Ok_
