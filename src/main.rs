@@ -15,8 +15,8 @@
  *    - clear
  *   TODO
  *    - new
- *    - goto
  *    - 文字列型
+ *    - 組込みコマンドに値が渡される前に評価する
  *
  */
 
@@ -78,6 +78,13 @@ fn mainloop() {
             func: icommand_clear,
             argl: 0,
         },
+    );
+    env.command.insert(
+        "goto".to_string(),
+        InternalCommand {
+            func: icommand_goto,
+            argl: 1,
+        }
     );
 
     loop {
@@ -188,7 +195,7 @@ fn icommand_run(env: &mut Env, _: &[Expr]) -> ReturnCode {
     // 実行中にrunコマンドが実行された場合、無限ループする
     if let Some(first_line) = indexlist.first() {
         env.nl = *first_line;
-        ReturnCode::Ok_
+        ReturnCode::SilentOk_
     } else {
         env.nl = -1;
         ReturnCode::Error_
@@ -206,4 +213,16 @@ fn icommand_cls(_: &mut Env, _: &[Expr]) -> ReturnCode {
 fn icommand_clear(env: &mut Env, _: &[Expr]) -> ReturnCode {
     env.variable = HashMap::new();
     ReturnCode::Ok_
+}
+
+fn icommand_goto(env: &mut Env, e: &[Expr]) -> ReturnCode {
+    if let Some(line) = e.first().unwrap().eval(env){
+        if line < 0 {
+            return ReturnCode::Error_;
+        }
+        env.nl = line;
+        ReturnCode::SilentOk_
+    } else {
+        ReturnCode::Error_
+    }
 }
