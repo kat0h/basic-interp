@@ -17,7 +17,7 @@
  *    - new
  *    - goto
  *    - 文字列型
- * 
+ *
  */
 
 use core::option::Option;
@@ -25,21 +25,22 @@ use std::collections::HashMap;
 use std::io;
 use std::io::{stdout, Write};
 
-mod structs;
 mod parser;
-use crate::structs::*;
+mod structs;
 use crate::parser::parse_line;
-
+use crate::structs::*;
 
 fn main() {
     mainloop();
 }
 
 fn mainloop() {
+    // TODO 初期化関数を作る
     let mut env = Env {
         variable: HashMap::new(),
         line: HashMap::new(),
         command: HashMap::new(),
+        nl: -1,
     };
 
     // 組み込みコマンドを初期化する
@@ -76,17 +77,45 @@ fn mainloop() {
         InternalCommand {
             func: icommand_clear,
             argl: 0,
-        }
+        },
     );
 
     loop {
+        // dbg!(&env.variable);
+        // dbg!(&env.line);
+        // dbg!(&env.nl);
+        // println!();
+ 
+        // 処理する行を取得
         let mut line = String::new();
-        let bytes = io::stdin()
-            .read_line(&mut line)
-            .expect("Failed to read line");
-        if bytes == 0 {
-            break;
+        // 処理はREPLの入力か
+        let is_in_repl;
+        if env.nl == -1 {
+            // 行をREPLから読み込み
+            let bytes = io::stdin()
+                .read_line(&mut line)
+                .expect("Failed to read line");
+            if bytes == 0 {
+                break;
+            }
+            is_in_repl = true;
+        } else if let Some(l) = env.line.get(&env.nl) {
+            line = l.to_string() + "\n";
+            // 次の行を取得
+            env.nl = {
+                let mut indexlist = env.line.iter().map(|i| *(i.0)).collect::<Vec<i64>>();
+                indexlist.sort();
+                match indexlist.binary_search(&env.nl) {
+                    Ok(n) => *indexlist.get(n+1).unwrap_or(&-1),
+                    Err(_) => -1,
+                }
+            };
+            is_in_repl = false;
+        } else {
+            dbg!("Error!: Can't find line");
+            continue;
         }
+        let is_last_line = !is_in_repl && (env.nl == -1);
 
         //parse line
         let parsed = parse_line::input(&line);
@@ -98,11 +127,16 @@ fn mainloop() {
                     // エラーを振り分け
                     match err {
                         ReturnCode::Ok_ => {
-                            println!("OK");
+                            // REPLか最終行にいる
+                            if is_in_repl || is_last_line {
+                                println!("OK");
+                            }
                         }
                         ReturnCode::SilentOk_ => (),
                         ReturnCode::Error_ => {
-                            println!("Error")
+                            println!("Error");
+                            // エラーが起きたら実行を中断する
+                            env.nl = -1;
                         }
                     }
                 }
@@ -137,8 +171,8 @@ fn icommand_print(env: &mut Env, args: &[Expr]) -> ReturnCode {
     }
 }
 
-// 保存されている全ての行を削除
-fn icommand_list(env: &mut Env, _: &[Expr]) -> ReturnCode { 
+// 保存されている全ての行を表示
+fn icommand_list(env: &mut Env, _: &[Expr]) -> ReturnCode {
     let mut l: Vec<(&i64, &String)> = env.line.iter().collect();
     l.sort_by(|a, b| a.0.cmp(b.0));
     for i in l.iter() {
@@ -149,38 +183,15 @@ fn icommand_list(env: &mut Env, _: &[Expr]) -> ReturnCode {
 
 // プログラムを実行
 fn icommand_run(env: &mut Env, _: &[Expr]) -> ReturnCode {
-    // TODO: 実行中に新しい行が追加された時の対応
-    // 実行前に全ての行を取得して、順に実行する
     let mut indexlist = env.line.iter().map(|i| *(i.0)).collect::<Vec<i64>>();
-    let mut rc: ReturnCode = ReturnCode::Ok_;
     indexlist.sort();
-    for index in indexlist {
-        let parsed = parse_line::input(&(env.line.get(&index).unwrap().to_string() + "\n"));
-        rc = match parsed {
-            Ok(stmt) => {
-                if let Some(stmt) = stmt {
-                    stmt.exec(env)
-                } else {
-                    // 空行など
-                    ReturnCode::SilentOk_
-                }
-            }
-            // パーサーがエラーを吐いた場合
-            Err(err) => {
-                // TODO
-                println!("Syntax Error!");
-                dbg!(&err);
-                ReturnCode::Error_
-            }
-        };
-        if let ReturnCode::Error_ = rc {
-            break;
-        }
-    }
-    if let ReturnCode::Error_ = rc {
-        ReturnCode::Error_
-    } else {
+    // 実行中にrunコマンドが実行された場合、無限ループする
+    if let Some(first_line) = indexlist.first() {
+        env.nl = *first_line;
         ReturnCode::Ok_
+    } else {
+        env.nl = -1;
+        ReturnCode::Error_
     }
 }
 

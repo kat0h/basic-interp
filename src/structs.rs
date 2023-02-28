@@ -8,14 +8,19 @@ pub enum ReturnCode {
 
 // 環境
 pub struct Env {
+    // 変数 - 名前: 数値の対応
     pub variable: HashMap<String, i64>,
+    // プログラム - 行番号: 内容
     pub line: HashMap<i64, String>,
+    // 内蔵コマンド - 名前: 構造体
     pub command: HashMap<String, InternalCommand>,
+    // プログラムカウンタ - 次実行するべき行
+    //   -1のときは次に実行する行がない
+    pub nl: i64,
 }
 
-pub type Icommand = fn(env: &mut Env, args: &[Expr]) -> ReturnCode;
 pub struct InternalCommand {
-    pub func: Icommand,
+    pub func: fn(env: &mut Env, args: &[Expr]) -> ReturnCode,
     pub argl: i64,
 }
 
@@ -55,6 +60,7 @@ impl Stmt {
         match self {
             // 行番号
             Stmt::Line { index, line } => {
+                // TODO: env.nlを書き換える
                 env.line.insert(*index, line.to_string());
                 ReturnCode::SilentOk_
             }
@@ -83,7 +89,6 @@ impl Stmt {
                         // eprintln!("Too many/less argumants");
                         return ReturnCode::Error_;
                     }
-                    // TODO: 内蔵コマンドのエラーを処理する
                     (cmd.func)(env, items)
                 } else {
                     // eprintln!("Undefined Command");
